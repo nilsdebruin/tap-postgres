@@ -14,7 +14,7 @@ test_schema_name = "public"
 test_table_name = "postgres_drop_table_test"
 
 def canonicalized_table_name(schema, table, cur):
-    return "{}.{}".format(quote_ident(schema, cur), quote_ident(table, cur))
+    return f"{quote_ident(schema, cur)}.{quote_ident(table, cur)}"
 
 class PostgresDropTable(unittest.TestCase):
 
@@ -63,9 +63,10 @@ class PostgresDropTable(unittest.TestCase):
                                           WHERE  table_schema = %s
                                           AND  table_name =   %s);""",
                                         [test_schema_name, test_table_name])
-                old_table = cur.fetchone()[0]
-                if old_table:
-                    cur.execute("DROP TABLE {}".format(canonicalized_table_name(test_schema_name, test_table_name, cur)))
+                if old_table := cur.fetchone()[0]:
+                    cur.execute(
+                        f"DROP TABLE {canonicalized_table_name(test_schema_name, test_table_name, cur)}"
+                    )
 
 
                 cur = conn.cursor()
@@ -74,7 +75,7 @@ class PostgresDropTable(unittest.TestCase):
                     cur.execute(""" CREATE EXTENSION hstore; """)
 
                 #pylint: disable=line-too-long
-                create_table_sql = 'CREATE TABLE {} (id SERIAL PRIMARY KEY)'.format(canonicalized_table_name(test_schema_name, test_table_name, cur))
+                create_table_sql = f'CREATE TABLE {canonicalized_table_name(test_schema_name, test_table_name, cur)} (id SERIAL PRIMARY KEY)'
 
                 cur.execute(create_table_sql)
 
@@ -91,7 +92,9 @@ class PostgresDropTable(unittest.TestCase):
         # There should not be any tables in this database
         with db_utils.get_test_connection('discovery0') as conn:
             cur = conn.cursor()
-            cur.execute("DROP TABLE {}".format(canonicalized_table_name(test_schema_name, test_table_name, cur)))
+            cur.execute(
+                f"DROP TABLE {canonicalized_table_name(test_schema_name, test_table_name, cur)}"
+            )
 
         # Run discovery again
         check_job_name = runner.run_check_mode(self, conn_id)

@@ -56,9 +56,7 @@ JSON_TYPES = {'json', 'jsonb'}
 
 
 def nullable_column(col_type, pk):
-    if pk:
-        return  [col_type]
-    return ['null', col_type]
+    return [col_type] if pk else ['null', col_type]
 
 def schema_for_column_datatype(c):
     schema = {}
@@ -154,8 +152,7 @@ def schema_for_column_datatype(c):
     return schema
 
 def schema_name_for_numeric_array(precision, scale):
-    schema_name = 'sdc_recursive_decimal_{}_{}_array'.format(precision, scale)
-    return schema_name
+    return f'sdc_recursive_decimal_{precision}_{scale}_array'
 
 def schema_for_column(c):
     #NB> from the post postgres docs: The current implementation does not enforce the declared number of dimensions either.
@@ -186,7 +183,7 @@ def schema_for_column(c):
         scale = post_db.numeric_scale(c)
         precision = post_db.numeric_precision(c)
         schema_name = schema_name_for_numeric_array(precision, scale)
-        column_schema['items'] = {'$ref': '#/definitions/{}'.format(schema_name)}
+        column_schema['items'] = {'$ref': f'#/definitions/{schema_name}'}
     elif c.sql_data_type == 'double precision[]':
         column_schema['items'] = {'$ref': '#/definitions/sdc_recursive_number_array'}
     elif c.sql_data_type == 'hstore[]':
@@ -301,7 +298,12 @@ def get_database_name(connection):
 def write_sql_data_type_md(mdata, col_info):
     c_name = col_info.column_name
     if col_info.sql_data_type == 'bit' and col_info.character_maximum_length > 1:
-        mdata = metadata.write(mdata, ('properties', c_name), 'sql-datatype', "bit({})".format(col_info.character_maximum_length))
+        mdata = metadata.write(
+            mdata,
+            ('properties', c_name),
+            'sql-datatype',
+            f"bit({col_info.character_maximum_length})",
+        )
     else:
         mdata = metadata.write(mdata, ('properties', c_name), 'sql-datatype', col_info.sql_data_type)
 
@@ -324,13 +326,15 @@ def include_array_schemas(columns, schema):
         scale = post_db.numeric_scale(columns[c])
         precision = post_db.numeric_precision(columns[c])
         schema_name = schema_name_for_numeric_array(precision, scale)
-        schema['definitions'][schema_name] = {'type' : ['null', 'number', 'array'],
-                                              'multipleOf': post_db.numeric_multiple_of(scale),
-                                              'exclusiveMaximum' : True,
-                                              'maximum' : post_db.numeric_max(precision, scale),
-                                              'exclusiveMinimum': True,
-                                              'minimum' : post_db.numeric_min(precision, scale),
-                                              'items' : {'$ref': '#/definitions/{}'.format(schema_name)}}
+        schema['definitions'][schema_name] = {
+            'type': ['null', 'number', 'array'],
+            'multipleOf': post_db.numeric_multiple_of(scale),
+            'exclusiveMaximum': True,
+            'maximum': post_db.numeric_max(precision, scale),
+            'exclusiveMinimum': True,
+            'minimum': post_db.numeric_min(precision, scale),
+            'items': {'$ref': f'#/definitions/{schema_name}'},
+        }
 
     return schema
 
@@ -360,7 +364,7 @@ def discover_columns(connection, table_info):
 
             schema = include_array_schemas(columns, schema)
 
-            for c_name in column_schemas.keys():
+            for c_name in column_schemas:
                 mdata = write_sql_data_type_md(mdata, columns[c_name])
 
                 if column_schemas[c_name].get('type') is None:
@@ -385,8 +389,7 @@ def discover_columns(connection, table_info):
 
 def discover_db(connection):
     table_info = produce_table_info(connection)
-    db_streams = discover_columns(connection, table_info)
-    return db_streams
+    return discover_columns(connection, table_info)
 
 def attempt_connection_to_db(conn_config, dbname):
     nascent_config = copy.deepcopy(conn_config)
@@ -458,9 +461,15 @@ def do_sync_incremental(conn_config, stream, state, desired_columns, md_map):
     LOGGER.info("Stream %s is using incremental replication with replication key %s", stream['tap_stream_id'], replication_key)
 
     stream_state = state.get('bookmarks', {}).get(stream['tap_stream_id'])
-    illegal_bk_keys = set(stream_state.keys()).difference(set(['replication_key', 'replication_key_value', 'version', 'last_replication_method']))
-    if len(illegal_bk_keys) != 0:
-        raise Exception("invalid keys found in state: {}".format(illegal_bk_keys))
+    if illegal_bk_keys := set(stream_state.keys()).difference(
+        {
+            'replication_key',
+            'replication_key_value',
+            'version',
+            'last_replication_method',
+        }
+    ):
+        raise Exception(f"invalid keys found in state: {illegal_bk_keys}")
 
     state = singer.write_bookmark(state, stream['tap_stream_id'], 'replication_key', replication_key)
 
@@ -495,19 +504,27 @@ def sync_method_for_streams(streams, state, default_replication_method):
 
         state = clear_state_on_replication_change(state, stream['tap_stream_id'], replication_key, replication_method)
 
-        if replication_method not in set(['LOG_BASED', 'FULL_TABLE', 'INCREMENTAL']):
-            raise Exception("Unrecognized replication_method {} for stream {}".format(replication_method, stream['tap_stream_id']))
+        if replication_method not in {
+            'LOG_BASED',
+            'FULL_TABLE',
+            'INCREMENTAL',
+        }:
+            raise Exception(
+                f"Unrecognized replication_method {replication_method} for stream {stream['tap_stream_id']}"
+            )
 
         md_map = metadata.to_map(stream['metadata'])
         desired_columns = [c for c in stream['schema']['properties'].keys() if sync_common.should_sync_column(md_map, c)]
         desired_columns.sort()
 
-        if len(desired_columns) == 0:
+        if not desired_columns:
             LOGGER.warning('There are no columns selected for stream %s, skipping it', stream['tap_stream_id'])
             continue
 
         if replication_method == 'LOG_BASED' and stream_metadata.get((), {}).get('is-view'):
-            raise Exception('Logical Replication is NOT supported for views. Please change the replication method for {}'.format(stream['tap_stream_id']))
+            raise Exception(
+                f"Logical Replication is NOT supported for views. Please change the replication method for {stream['tap_stream_id']}"
+            )
 
         if replication_method == 'FULL_TABLE':
             lookup[stream['tap_stream_id']] = 'full'
@@ -544,7 +561,7 @@ def sync_traditional_stream(conn_config, stream, state, sync_method, end_lsn):
     desired_columns = [c for c in stream['schema']['properties'].keys() if sync_common.should_sync_column(md_map, c)]
     desired_columns.sort()
 
-    if len(desired_columns) == 0:
+    if not desired_columns:
         LOGGER.warning('There are no columns selected for stream %s, skipping it', stream['tap_stream_id'])
         return state
 
@@ -570,7 +587,9 @@ def sync_traditional_stream(conn_config, stream, state, sync_method, end_lsn):
         sync_common.send_schema_message(stream, [])
         state = full_table.sync_table(conn_config, stream, state, desired_columns, md_map)
     else:
-        raise Exception("unknown sync method {} for stream {}".format(sync_method, stream['tap_stream_id']))
+        raise Exception(
+            f"unknown sync method {sync_method} for stream {stream['tap_stream_id']}"
+        )
 
     state = singer.set_currently_syncing(state, None)
     singer.write_message(singer.StateMessage(value=copy.deepcopy(state)))
@@ -591,8 +610,7 @@ def register_type_adapters(conn_config):
         with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
             #citext[]
             cur.execute("SELECT typarray FROM pg_type where typname = 'citext'")
-            citext_array_oid = cur.fetchone()
-            if citext_array_oid:
+            if citext_array_oid := cur.fetchone():
                 psycopg2.extensions.register_type(
                     psycopg2.extensions.new_array_type(
                         (citext_array_oid[0],), 'CITEXT[]', psycopg2.STRING))
@@ -629,7 +647,9 @@ def register_type_adapters(conn_config):
                 enum_oid = oid[0]
                 psycopg2.extensions.register_type(
                     psycopg2.extensions.new_array_type(
-                        (enum_oid,), 'ENUM_{}[]'.format(enum_oid), psycopg2.STRING))
+                        (enum_oid,), f'ENUM_{enum_oid}[]', psycopg2.STRING
+                    )
+                )
 
 
 def any_logical_streams(streams, default_replication_method):

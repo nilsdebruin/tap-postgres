@@ -3,32 +3,33 @@ import psycopg2
 from psycopg2.extensions import quote_ident
 
 def ensure_environment_variables_set():
-    missing_envs = [x for x in [os.getenv('TAP_POSTGRES_HOST'),
-                                os.getenv('TAP_POSTGRES_USER'),
-                                os.getenv('TAP_POSTGRES_PASSWORD'),
-                                os.getenv('TAP_POSTGRES_PORT'),
-                                os.getenv('TAP_POSTGRES_DBNAME')] if x is None]
-    if len(missing_envs) != 0:
-        raise Exception("Missing environment variables: {}".format(missing_envs))
+    if missing_envs := [
+        x
+        for x in [
+            os.getenv('TAP_POSTGRES_HOST'),
+            os.getenv('TAP_POSTGRES_USER'),
+            os.getenv('TAP_POSTGRES_PASSWORD'),
+            os.getenv('TAP_POSTGRES_PORT'),
+            os.getenv('TAP_POSTGRES_DBNAME'),
+        ]
+        if x is None
+    ]:
+        raise Exception(f"Missing environment variables: {missing_envs}")
 
 def ensure_db(dbname=os.getenv('TAP_POSTGRES_DBNAME')):
     # Create database dev if not exists
     with get_test_connection('postgres') as conn:
         conn.autocommit = True
         with conn.cursor() as cur:
-            cur.execute("SELECT 1 FROM pg_database WHERE datname = '{}'".format(dbname))
+            cur.execute(f"SELECT 1 FROM pg_database WHERE datname = '{dbname}'")
             exists = cur.fetchone()
             if not exists:
-                print("Creating database {}".format(dbname))
-                cur.execute("CREATE DATABASE {}".format(dbname))
+                print(f"Creating database {dbname}")
+                cur.execute(f"CREATE DATABASE {dbname}")
 
 def get_test_connection(dbname=os.getenv('TAP_POSTGRES_DBNAME'), logical_replication=False):
 
-    conn_string = "host='{}' dbname='{}' user='{}' password='{}' port='{}'".format(os.getenv('TAP_POSTGRES_HOST'),
-                                                                                   dbname,
-                                                                                   os.getenv('TAP_POSTGRES_USER'),
-                                                                                   os.getenv('TAP_POSTGRES_PASSWORD'),
-                                                                                   os.getenv('TAP_POSTGRES_PORT'))
+    conn_string = f"host='{os.getenv('TAP_POSTGRES_HOST')}' dbname='{dbname}' user='{os.getenv('TAP_POSTGRES_USER')}' password='{os.getenv('TAP_POSTGRES_PASSWORD')}' port='{os.getenv('TAP_POSTGRES_PORT')}'"
 
     if logical_replication:
         return psycopg2.connect(conn_string, connection_factory=psycopg2.extras.LogicalReplicationConnection)
@@ -36,7 +37,7 @@ def get_test_connection(dbname=os.getenv('TAP_POSTGRES_DBNAME'), logical_replica
         return psycopg2.connect(conn_string)
 
 def canonicalized_table_name(conn_cursor, schema, table):
-    return "{}.{}".format(quote_ident(schema, conn_cursor), quote_ident(table, conn_cursor))
+    return f"{quote_ident(schema, conn_cursor)}.{quote_ident(table, conn_cursor)}"
 
 def ensure_replication_slot(conn_cursor, db_name=os.getenv('TAP_POSTGRES_DBNAME'), slot_name='stitch'):
     conn_cursor.execute("""SELECT EXISTS (
@@ -65,9 +66,8 @@ def ensure_fresh_table(conn, conn_cursor, schema_name, table_name):
                               WHERE  table_schema = %s
                               AND  table_name =   %s);""",
                             [schema_name, table_name])
-    old_table = conn_cursor.fetchone()[0]
-    if old_table:
-        conn_cursor.execute("DROP TABLE {}".format(ctable_name))
+    if old_table := conn_cursor.fetchone()[0]:
+        conn_cursor.execute(f"DROP TABLE {ctable_name}")
 
 
     conn_cursor2 = conn.cursor()
@@ -82,12 +82,11 @@ def ensure_fresh_table(conn, conn_cursor, schema_name, table_name):
 
 
 def insert_record(conn_cursor, table_name, data):
-    our_keys = list(data.keys())
-    our_keys.sort()
+    our_keys = sorted(data.keys())
     our_values = [data.get(key) for key in our_keys]
 
     columns_sql = ", \n ".join(our_keys)
-    value_sql = ",".join(["%s" for i in range(len(our_keys))])
+    value_sql = ",".join(["%s" for _ in range(len(our_keys))])
 
     insert_sql = """ INSERT INTO {}
                             ( {} )
@@ -109,11 +108,9 @@ def update_record(conn_cursor, ctable_name, primary_key, data):
     for field, value in data.items():
         if ' ' in field:
             field = quote_ident(field, conn_cursor)
-        fields_to_update += " {} = '{}',".format(field, value)
+        fields_to_update += f" {field} = '{value}',"
 
-    update_sql = "UPDATE {} SET{} WHERE id = {}".format(ctable_name,
-                                                        fields_to_update[:-1],
-                                                        primary_key)
+    update_sql = f"UPDATE {ctable_name} SET{fields_to_update[:-1]} WHERE id = {primary_key}"
     conn_cursor.execute(update_sql)
 
 def delete_record(conn_cursor, ctable_name, primary_key):
@@ -122,4 +119,4 @@ def delete_record(conn_cursor, ctable_name, primary_key):
     #     with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
     #         cur.execute("DELETE FROM {} WHERE id = 3".format(canonicalized_table_name(test_schema_name, test_table_name, cur)))
 
-    conn_cursor.execute("DELETE FROM {} WHERE id = {}".format(ctable_name, primary_key))
+    conn_cursor.execute(f"DELETE FROM {ctable_name} WHERE id = {primary_key}")

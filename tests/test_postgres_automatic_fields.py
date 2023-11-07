@@ -133,7 +133,7 @@ CREATE TABLE {} (id            SERIAL PRIMARY KEY,
                 nyc_tz = pytz.timezone('America/New_York')
                 our_ts_tz = nyc_tz.localize(our_ts)
                 our_time  = datetime.time(12,11,10)
-                our_time_tz = our_time.isoformat() + "-04:00"
+                our_time_tz = f"{our_time.isoformat()}-04:00"
                 our_date = datetime.date(1998, 3, 4)
                 my_uuid =  str(uuid.uuid1())
                 self.inserted_records.append({
@@ -198,7 +198,7 @@ CREATE TABLE {} (id            SERIAL PRIMARY KEY,
                 nyc_tz = pytz.timezone('America/New_York')
                 our_ts_tz = nyc_tz.localize(our_ts)
                 our_time  = datetime.time(10,9,8)
-                our_time_tz = our_time.isoformat() + "-04:00"
+                our_time_tz = f"{our_time.isoformat()}-04:00"
                 our_date = datetime.date(1964, 7, 1)
                 my_uuid =  str(uuid.uuid1())
                 self.inserted_records.append({
@@ -276,12 +276,8 @@ CREATE TABLE {} (id            SERIAL PRIMARY KEY,
         }
 
     def expected_replication_keys(self):
-        replication_keys = {
-            'postgres_automatic_fields_test' : {'our_integer'}
-        }
-
         if self.default_replication_method == self.INCREMENTAL:
-            return replication_keys
+            return {'postgres_automatic_fields_test': {'our_integer'}}
         else:
             return {'postgres_automatic_fields_test' : set()}
 
@@ -324,15 +320,11 @@ CREATE TABLE {} (id            SERIAL PRIMARY KEY,
     @staticmethod
     def expected_ts_tz(our_ts_tz):
         our_ts_tz_utc = our_ts_tz.astimezone(pytz.utc)
-        expected_value = datetime.datetime.strftime(our_ts_tz_utc, "%Y-%m-%dT%H:%M:%S.%f+00:00")
-
-        return expected_value
+        return datetime.datetime.strftime(our_ts_tz_utc, "%Y-%m-%dT%H:%M:%S.%f+00:00")
 
     @staticmethod
     def expected_ts(our_ts):
-        expected_value = datetime.datetime.strftime(our_ts, "%Y-%m-%dT%H:%M:%S.%f+00:00")
-
-        return expected_value
+        return datetime.datetime.strftime(our_ts, "%Y-%m-%dT%H:%M:%S.%f+00:00")
 
     def select_streams_and_fields(self, conn_id, catalog, select_all_fields: bool = False):
         """Select all streams and all fields within streams or all streams and no fields."""
@@ -419,7 +411,7 @@ CREATE TABLE {} (id            SERIAL PRIMARY KEY,
         print("discovered streams are correct")
 
         # perform table selection
-        print('selecting {} and NO FIELDS within the table'.format(test_table_name))
+        print(f'selecting {test_table_name} and NO FIELDS within the table')
         self.select_streams_and_fields(conn_id, test_catalog, select_all_fields=False)
 
         # clear state

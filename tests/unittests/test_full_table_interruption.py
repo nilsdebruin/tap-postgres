@@ -27,9 +27,7 @@ def singer_write_message_no_cow(message):
         COW_RECORD_COUNT = COW_RECORD_COUNT + 1
         if COW_RECORD_COUNT > 2:
             raise Exception("simulated exception")
-        CAUGHT_MESSAGES.append(message)
-    else:
-        CAUGHT_MESSAGES.append(message)
+    CAUGHT_MESSAGES.append(message)
 
 def singer_write_schema_ok(message):
     CAUGHT_MESSAGES.append(message)
@@ -38,11 +36,7 @@ def singer_write_message_ok(message):
     CAUGHT_MESSAGES.append(message)
 
 def expected_record(fixture_row):
-    expected_record = {}
-    for k,v in fixture_row.items():
-        expected_record[k.replace('"', '')] = v
-
-    return expected_record
+    return {k.replace('"', ''): v for k, v in fixture_row.items()}
 
 def do_not_dump_catalog(catalog):
     pass

@@ -60,12 +60,11 @@ expected_schemas = {'postgres_logical_replication_test':
 
 
 def insert_record(cursor, table_name, data):
-    our_keys = list(data.keys())
-    our_keys.sort()
+    our_keys = sorted(data.keys())
     our_values = [data.get(key) for key in our_keys]
 
     columns_sql = ", \n ".join(our_keys)
-    value_sql = ",".join(["%s" for i in range(len(our_keys))])
+    value_sql = ",".join(["%s" for _ in range(len(our_keys))])
 
     insert_sql = """ INSERT INTO {}
                             ( {} )
@@ -78,7 +77,7 @@ test_db = "logical_1"
 test_table_name = "postgres_logical_replication_test"
 
 def canonicalized_table_name(schema, table, cur):
-    return "{}.{}".format(quote_ident(schema, cur), quote_ident(table, cur))
+    return f"{quote_ident(schema, cur)}.{quote_ident(table, cur)}"
 
 
 class PostgresLogicalRep(unittest.TestCase):
@@ -115,10 +114,10 @@ class PostgresLogicalRep(unittest.TestCase):
                                           WHERE  table_schema = %s
                                           AND  table_name =   %s);""",
                                         [test_schema_name, test_table_name])
-                old_table = cur.fetchone()[0]
-
-                if old_table:
-                    cur.execute("DROP TABLE {}".format(canonicalized_table_name(test_schema_name, test_table_name, cur)))
+                if old_table := cur.fetchone()[0]:
+                    cur.execute(
+                        f"DROP TABLE {canonicalized_table_name(test_schema_name, test_table_name, cur)}"
+                    )
 
 
                 cur = conn.cursor()
@@ -169,7 +168,7 @@ CREATE TABLE {} (id            SERIAL PRIMARY KEY,
                 nyc_tz = pytz.timezone('America/New_York')
                 our_ts_tz = nyc_tz.localize(our_ts)
                 our_time  = datetime.time(12,11,10)
-                our_time_tz = our_time.isoformat() + "-04:00"
+                our_time_tz = f"{our_time.isoformat()}-04:00"
                 our_date = datetime.date(1998, 3, 4)
                 my_uuid =  str(uuid.uuid1())
 
@@ -207,7 +206,7 @@ CREATE TABLE {} (id            SERIAL PRIMARY KEY,
                 nyc_tz = pytz.timezone('America/New_York')
                 our_ts_tz = nyc_tz.localize(our_ts)
                 our_time  = datetime.time(10,9,8)
-                our_time_tz = our_time.isoformat() + "-04:00"
+                our_time_tz = f"{our_time.isoformat()}-04:00"
                 our_date = datetime.date(1964, 7, 1)
                 my_uuid =  str(uuid.uuid1())
 
@@ -245,7 +244,7 @@ CREATE TABLE {} (id            SERIAL PRIMARY KEY,
                 nyc_tz = pytz.timezone('America/New_York')
                 our_ts_tz = nyc_tz.localize(our_ts)
                 our_time  = datetime.time(12,11,10)
-                our_time_tz = our_time.isoformat() + "-04:00"
+                our_time_tz = f"{our_time.isoformat()}-04:00"
                 our_date = datetime.date(1998, 3, 4)
                 my_uuid =  str(uuid.uuid1())
 
@@ -283,7 +282,7 @@ CREATE TABLE {} (id            SERIAL PRIMARY KEY,
                 nyc_tz = pytz.timezone('America/New_York')
                 our_ts_tz = nyc_tz.localize(our_ts)
                 our_time  = datetime.time(10,9,8)
-                our_time_tz = our_time.isoformat() + "-04:00"
+                our_time_tz = f"{our_time.isoformat()}-04:00"
                 our_date = datetime.date(1964, 7, 1)
                 my_uuid =  str(uuid.uuid1())
 

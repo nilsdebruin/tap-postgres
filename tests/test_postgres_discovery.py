@@ -132,7 +132,7 @@ CREATE TABLE {} (id                   SERIAL PRIMARY KEY,
                 nyc_tz = pytz.timezone('America/New_York')
                 our_ts_tz = nyc_tz.localize(our_ts)
                 our_time  = datetime.time(12,11,10)
-                our_time_tz = our_time.isoformat() + "-04:00"
+                our_time_tz = f"{our_time.isoformat()}-04:00"
                 our_date = datetime.date(1998, 3, 4)
                 my_uuid =  str(uuid.uuid1())
 
@@ -142,7 +142,7 @@ CREATE TABLE {} (id                   SERIAL PRIMARY KEY,
                     nyc_tz = pytz.timezone('America/New_York')
                     our_ts_tz = nyc_tz.localize(our_ts)
                     our_time  = datetime.time(10,9,8)
-                    our_time_tz = our_time.isoformat() + "-04:00"
+                    our_time_tz = f"{our_time.isoformat()}-04:00"
                     our_date = datetime.date(1964, 7, 1)
                     my_uuid =  str(uuid.uuid1())
 
@@ -176,7 +176,7 @@ CREATE TABLE {} (id                   SERIAL PRIMARY KEY,
                     db_utils.insert_record(cur, test_table_name, record)
                     self.recs.append(record)
 
-                cur.execute("""ANALYZE {}""".format(canonicalized_table_name))
+                cur.execute(f"""ANALYZE {canonicalized_table_name}""")
 
     @staticmethod
     def expected_check_streams():
@@ -185,7 +185,7 @@ CREATE TABLE {} (id                   SERIAL PRIMARY KEY,
     def expected_check_stream_ids(self):
         """A set of expected table names in <collection_name> format"""
         check_streams = self.expected_check_streams()
-        return {"{}-{}-{}".format(test_db, test_schema_name, stream) for stream in check_streams}
+        return {f"{test_db}-{test_schema_name}-{stream}" for stream in check_streams}
 
     @staticmethod
     def expected_primary_keys():
@@ -395,14 +395,16 @@ CREATE TABLE {} (id                   SERIAL PRIMARY KEY,
                 actual_primary_keys = set(stream_properties.get(self.PRIMARY_KEYS, []))
                 actual_replication_keys = set(stream_properties.get(self.REPLICATION_KEYS, []))
                 actual_replication_method = stream_properties.get(self.REPLICATION_METHOD)
-                actual_automatic_fields = set(
-                    item.get("breadcrumb", ["properties", None])[1] for item in stream_metadata
+                actual_automatic_fields = {
+                    item.get("breadcrumb", ["properties", None])[1]
+                    for item in stream_metadata
                     if item.get("metadata").get("inclusion") == "automatic"
-                )
-                actual_unsupported_fields = set(
-                    item.get("breadcrumb", ["properties", None])[1] for item in stream_metadata
+                }
+                actual_unsupported_fields = {
+                    item.get("breadcrumb", ["properties", None])[1]
+                    for item in stream_metadata
                     if item.get("metadata").get("inclusion") == "unsupported"
-                )
+                }
                 actual_fields_to_datatypes = {
                     item['breadcrumb'][1]: item['metadata'].get('sql-datatype')
                     for item in stream_metadata[1:]
