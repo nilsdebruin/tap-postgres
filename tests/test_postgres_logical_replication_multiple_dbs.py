@@ -12,12 +12,11 @@ import db_utils  # pylint: disable=import-error
 
 
 def insert_record(cursor, table_name, data):
-    our_keys = list(data.keys())
-    our_keys.sort()
+    our_keys = sorted(data.keys())
     our_values = [data.get(key) for key in our_keys]
 
     columns_sql = ", \n ".join(our_keys)
-    value_sql = ",".join(["%s" for i in range(len(our_keys))])
+    value_sql = ",".join(["%s" for _ in range(len(our_keys))])
 
     insert_sql = """ INSERT INTO {}
                             ( {} )
@@ -30,7 +29,7 @@ test_table_name_cows = "postgres_logical_replication_test_cows"
 test_table_name_chickens = "postgres_logical_replication_test_chickens"
 
 def canonicalized_table_name(schema, table, cur):
-    return "{}.{}".format(quote_ident(schema, cur), quote_ident(table, cur))
+    return f"{quote_ident(schema, cur)}.{quote_ident(table, cur)}"
 
 
 class PostgresLogicalRepMultipleDBs(unittest.TestCase):
@@ -72,10 +71,10 @@ class PostgresLogicalRepMultipleDBs(unittest.TestCase):
                                           WHERE  table_schema = %s
                                           AND  table_name =   %s);""",
                                             [test_schema_name, test_table_name_cows])
-                old_table = cur.fetchone()[0]
-
-                if old_table:
-                    cur.execute("DROP TABLE {}".format(canonicalized_table_name(test_schema_name, test_table_name_cows, cur)))
+                if old_table := cur.fetchone()[0]:
+                    cur.execute(
+                        f"DROP TABLE {canonicalized_table_name(test_schema_name, test_table_name_cows, cur)}"
+                    )
 
                 #create dev_cows
                 cur = conn.cursor()
@@ -111,10 +110,10 @@ class PostgresLogicalRepMultipleDBs(unittest.TestCase):
                                           WHERE  table_schema = %s
                                           AND  table_name =   %s);""",
                                         [test_schema_name, test_table_name_chickens])
-                old_table = cur.fetchone()[0]
-
-                if old_table:
-                    cur.execute("DROP TABLE {}".format(canonicalized_table_name(test_schema_name, test_table_name_chickens, cur)))
+                if old_table := cur.fetchone()[0]:
+                    cur.execute(
+                        f"DROP TABLE {canonicalized_table_name(test_schema_name, test_table_name_chickens, cur)}"
+                    )
 
 
                 #create postgres_chickens
@@ -189,13 +188,15 @@ class PostgresLogicalRepMultipleDBs(unittest.TestCase):
                           in menagerie.get_catalogs(conn_id)
                           if fc['tap_stream_id'] in self.expected_check_streams()]
 
-        self.assertGreaterEqual(len(found_catalogs),
-                                2,
-                                msg="unable to locate schemas for connection {}".format(conn_id))
+        self.assertGreaterEqual(
+            len(found_catalogs),
+            2,
+            msg=f"unable to locate schemas for connection {conn_id}",
+        )
 
         found_catalog_names = set(map(lambda c: c['tap_stream_id'], found_catalogs))
         diff = self.expected_check_streams().symmetric_difference(found_catalog_names)
-        self.assertEqual(len(diff), 0, msg="discovered schemas do not match: {}".format(diff))
+        self.assertEqual(len(diff), 0, msg=f"discovered schemas do not match: {diff}")
 
         # verify that persisted streams have the correct properties
         test_catalog_cows = list(filter( lambda c: c['stream_name'] == 'postgres_logical_replication_test_cows', found_catalogs))[0]

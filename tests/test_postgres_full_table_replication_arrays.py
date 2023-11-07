@@ -69,8 +69,7 @@ expected_schemas = {test_table_name:
 
 
 def insert_record(cursor, table_name, data):
-    our_keys = list(data.keys())
-    our_keys.sort()
+    our_keys = sorted(data.keys())
     our_values = [data.get(key) for key in our_keys]
 
     columns_sql = ", \n ".join(our_keys)
@@ -91,7 +90,7 @@ def insert_record(cursor, table_name, data):
     cursor.execute(insert_sql, our_values)
 
 def canonicalized_table_name(schema, table, cur):
-    return "{}.{}".format(quote_ident(schema, cur), quote_ident(table, cur))
+    return f"{quote_ident(schema, cur)}.{quote_ident(table, cur)}"
 
 
 class PostgresFullTableRepArrays(unittest.TestCase):
@@ -115,10 +114,10 @@ class PostgresFullTableRepArrays(unittest.TestCase):
                                           WHERE  table_schema = %s
                                           AND  table_name =   %s);""",
                                         [test_schema_name, test_table_name])
-                old_table = cur.fetchone()[0]
-
-                if old_table:
-                    cur.execute("DROP TABLE {}".format(canonicalized_table_name(test_schema_name, test_table_name, cur)))
+                if old_table := cur.fetchone()[0]:
+                    cur.execute(
+                        f"DROP TABLE {canonicalized_table_name(test_schema_name, test_table_name, cur)}"
+                    )
 
 
                 cur = conn.cursor()
@@ -216,13 +215,15 @@ CREATE TABLE {} (id                      SERIAL PRIMARY KEY,
                           if fc['tap_stream_id'] in self.expected_check_streams()]
 
 
-        self.assertGreaterEqual(len(found_catalogs),
-                                1,
-                                msg="unable to locate schemas for connection {}".format(conn_id))
+        self.assertGreaterEqual(
+            len(found_catalogs),
+            1,
+            msg=f"unable to locate schemas for connection {conn_id}",
+        )
 
         found_catalog_names = set(map(lambda c: c['tap_stream_id'], found_catalogs))
         diff = self.expected_check_streams().symmetric_difference(found_catalog_names)
-        self.assertEqual(len(diff), 0, msg="discovered schemas do not match: {}".format(diff))
+        self.assertEqual(len(diff), 0, msg=f"discovered schemas do not match: {diff}")
 
         # verify that persisted streams have the correct properties
         test_catalog = found_catalogs[0]
@@ -298,9 +299,11 @@ CREATE TABLE {} (id                      SERIAL PRIMARY KEY,
 
         for stream, recs in records_by_stream.items():
             # verify the persisted schema was correct
-            self.assertEqual(recs['schema'],
-                             expected_schemas[stream],
-                             msg="Persisted schema did not match expected schema for stream `{}`.".format(stream))
+            self.assertEqual(
+                recs['schema'],
+                expected_schemas[stream],
+                msg=f"Persisted schema did not match expected schema for stream `{stream}`.",
+            )
 
         self.assertEqual(3, len(records_by_stream[test_table_name]['messages']))
         self.assertEqual(records_by_stream[test_table_name]['messages'][0]['action'],
@@ -311,38 +314,45 @@ CREATE TABLE {} (id                      SERIAL PRIMARY KEY,
                          'activate_version')
         actual_record_1 = records_by_stream[test_table_name]['messages'][1]['data']
 
-        expected_inserted_record = {'id': 1,
-                                    'our_bit_array'         : [[False, True, True]],
-                                    'our_boolean_array'     : [True],
-                                    'our_cidr_array'        : [['192.168.100.128/25']],
-                                    'our_citext_array'      : [['maGICKal 2']],
-                                    'our_date_array'        : ['1998-03-04T00:00:00+00:00'],
-                                    'our_decimal_array'     : [decimal.Decimal('1234567890.01')],
-                                    'our_double_array'      : [[decimal.Decimal('1.232323')]],
-                                    'our_enum_array'        : [['bad']],
-                                    'our_float_array'       : [[decimal.Decimal('5.23')]],
-                                    'our_hstore_array'      : [[{'size' : 'small' }, {'name' : 'betty'} ]],
-                                    'our_inet_array'        : [['192.168.100.128/24']],
-                                    'our_int_array'         : [[1,2,3],[4,5,6]],
-                                    'our_json_array'        : [json.dumps({'secret' : 55})],
-                                    'our_jsonb_array'       : [json.dumps({'secret' : 69})],
-                                    'our_mac_array'         : [['08:00:2b:01:02:03']],
-                                    'our_money_array'       : [['$412.12']],
-                                    'our_real_array'        : [[decimal.Decimal('76.33')]],
-                                    'our_smallint_array'    : [[10,20,30],[40,50,60]],
-                                    'our_string_array'      : [['one string', 'two strings']],
-                                    'our_text_array'        : [['three string', 'four']],
-                                    'our_time_array'        : [['03:04:05']],
-                                    'our_ts_tz_array'       : ['1997-02-02T07:02:02.722184+00:00'],
-                                    'our_uuid_array'        : ['{}'.format(our_uuid)]
-
+        expected_inserted_record = {
+            'id': 1,
+            'our_bit_array': [[False, True, True]],
+            'our_boolean_array': [True],
+            'our_cidr_array': [['192.168.100.128/25']],
+            'our_citext_array': [['maGICKal 2']],
+            'our_date_array': ['1998-03-04T00:00:00+00:00'],
+            'our_decimal_array': [decimal.Decimal('1234567890.01')],
+            'our_double_array': [[decimal.Decimal('1.232323')]],
+            'our_enum_array': [['bad']],
+            'our_float_array': [[decimal.Decimal('5.23')]],
+            'our_hstore_array': [[{'size': 'small'}, {'name': 'betty'}]],
+            'our_inet_array': [['192.168.100.128/24']],
+            'our_int_array': [[1, 2, 3], [4, 5, 6]],
+            'our_json_array': [json.dumps({'secret': 55})],
+            'our_jsonb_array': [json.dumps({'secret': 69})],
+            'our_mac_array': [['08:00:2b:01:02:03']],
+            'our_money_array': [['$412.12']],
+            'our_real_array': [[decimal.Decimal('76.33')]],
+            'our_smallint_array': [[10, 20, 30], [40, 50, 60]],
+            'our_string_array': [['one string', 'two strings']],
+            'our_text_array': [['three string', 'four']],
+            'our_time_array': [['03:04:05']],
+            'our_ts_tz_array': ['1997-02-02T07:02:02.722184+00:00'],
+            'our_uuid_array': [f'{our_uuid}'],
         }
 
-        self.assertEqual(set(actual_record_1.keys()), set(expected_inserted_record.keys()),
-                         msg="keys for expected_record_1 are wrong: {}".format(set(actual_record_1.keys()).symmetric_difference(set(expected_inserted_record.keys()))))
+        self.assertEqual(
+            set(actual_record_1.keys()),
+            set(expected_inserted_record.keys()),
+            msg=f"keys for expected_record_1 are wrong: {set(actual_record_1.keys()).symmetric_difference(set(expected_inserted_record.keys()))}",
+        )
 
         for k in actual_record_1.keys():
-            self.assertEqual(actual_record_1[k], expected_inserted_record[k], msg="{} != {} for key {}".format(actual_record_1[k], expected_inserted_record[k], k))
+            self.assertEqual(
+                actual_record_1[k],
+                expected_inserted_record[k],
+                msg=f"{actual_record_1[k]} != {expected_inserted_record[k]} for key {k}",
+            )
 
         print("inserted record is correct")
 

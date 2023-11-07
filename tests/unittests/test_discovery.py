@@ -368,7 +368,7 @@ class TestHStoreTable(unittest.TestCase):
     def test_escaping_values(self):
         key = 'nickname'
         value = "Dave's Courtyard"
-        elem = '"{}"=>"{}"'.format(key, value)
+        elem = f'"{key}"=>"{value}"'
 
         with get_test_connection() as conn:
           with conn.cursor() as cur:
@@ -555,11 +555,10 @@ class TestArraysLikeTable(unittest.TestCase):
 
         with get_test_connection('postgres') as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
-                 create_sql = "CREATE MATERIALIZED VIEW {} AS SELECT * FROM {}\n".format(quote_ident(TestArraysLikeTable.like_table_name, cur),
-                                                                                         quote_ident(TestArraysLikeTable.table_name, cur))
+                create_sql = f"CREATE MATERIALIZED VIEW {quote_ident(TestArraysLikeTable.like_table_name, cur)} AS SELECT * FROM {quote_ident(TestArraysLikeTable.table_name, cur)}\n"
 
 
-                 cur.execute(create_sql)
+                cur.execute(create_sql)
 
 
     def test_catalog(self):
@@ -598,19 +597,19 @@ class TestColumnGrants(unittest.TestCase):
         ensure_test_table(table_spec)
 
         with get_test_connection() as conn:
-           cur = conn.cursor()
+            cur = conn.cursor()
 
-           sql = """ DROP USER IF EXISTS {} """.format(self.user, self.password)
-           LOGGER.info(sql)
-           cur.execute(sql)
+            sql = f""" DROP USER IF EXISTS {self.user} """
+            LOGGER.info(sql)
+            cur.execute(sql)
 
-           sql = """ CREATE USER {} WITH PASSWORD '{}' """.format(self.user, self.password)
-           LOGGER.info(sql)
-           cur.execute(sql)
+            sql = f""" CREATE USER {self.user} WITH PASSWORD '{self.password}' """
+            LOGGER.info(sql)
+            cur.execute(sql)
 
-           sql = """ GRANT SELECT ("id") ON "{}" TO {}""".format(TestColumnGrants.table_name, self.user)
-           LOGGER.info("running sql: {}".format(sql))
-           cur.execute(sql)
+            sql = f""" GRANT SELECT ("id") ON "{TestColumnGrants.table_name}" TO {self.user}"""
+            LOGGER.info(f"running sql: {sql}")
+            cur.execute(sql)
 
            
            

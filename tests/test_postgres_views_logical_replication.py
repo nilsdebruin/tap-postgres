@@ -24,15 +24,14 @@ expected_schemas = {'chicken_view': {'properties':
 
 
 def canonicalized_table_name(schema, table, cur):
-    return "{}.{}".format(quote_ident(schema, cur), quote_ident(table, cur))
+    return f"{quote_ident(schema, cur)}.{quote_ident(table, cur)}"
 
 def insert_record(cursor, table_name, data):
-    our_keys = list(data.keys())
-    our_keys.sort()
+    our_keys = sorted(data.keys())
     our_values = [data.get(key) for key in our_keys]
 
     columns_sql = ", \n ".join(our_keys)
-    value_sql = ",".join(["%s" for i in range(len(our_keys))])
+    value_sql = ",".join(["%s" for _ in range(len(our_keys))])
 
     insert_sql = """ INSERT INTO {}
                             ( {} )
@@ -64,12 +63,13 @@ class PostgresViewsLogicalReplication(unittest.TestCase):
                                                    WHERE table_schema = %s
                                                      AND  table_name =  %s)""",
                                             [test_schema_name, table])
-                    old_table = cur.fetchone()[0]
-                    if old_table:
-                        cur.execute("DROP TABLE {} CASCADE".format(canonicalized_table_name(test_schema_name, table, cur)))
+                    if old_table := cur.fetchone()[0]:
+                        cur.execute(
+                            f"DROP TABLE {canonicalized_table_name(test_schema_name, table, cur)} CASCADE"
+                        )
 
 
-                cur.execute("""DROP VIEW IF EXISTS {} """.format(quote_ident(test_view, cur)))
+                cur.execute(f"""DROP VIEW IF EXISTS {quote_ident(test_view, cur)} """)
                 cur.execute("""CREATE TABLE {}
                                 (id SERIAL PRIMARY KEY,
                                  name VARCHAR,
@@ -93,7 +93,9 @@ class PostgresViewsLogicalReplication(unittest.TestCase):
                 self.rec_1 = { 'name' : 'fred', 'size' : 'big' }
                 insert_record(cur, test_table_name_1, self.rec_1)
 
-                cur.execute("SELECT id FROM {}".format(canonicalized_table_name(test_schema_name, test_table_name_1, cur)))
+                cur.execute(
+                    f"SELECT id FROM {canonicalized_table_name(test_schema_name, test_table_name_1, cur)}"
+                )
                 fk_id = cur.fetchone()[0]
 
                 self.rec_2 = { 'fk_id' : fk_id, 'age' : 99 }
@@ -153,13 +155,15 @@ class PostgresViewsLogicalReplication(unittest.TestCase):
                           in menagerie.get_catalogs(conn_id)
                           if fc['tap_stream_id'] in self.expected_check_streams()]
 
-        self.assertEqual(len(found_catalogs),
-                         1,
-                         msg="unable to locate schemas for connection {}".format(conn_id))
+        self.assertEqual(
+            len(found_catalogs),
+            1,
+            msg=f"unable to locate schemas for connection {conn_id}",
+        )
 
         found_catalog_names = set(map(lambda c: c['tap_stream_id'], found_catalogs))
         diff = self.expected_check_streams().symmetric_difference(found_catalog_names)
-        self.assertEqual(len(diff), 0, msg="discovered schemas do not match: {}".format(diff))
+        self.assertEqual(len(diff), 0, msg=f"discovered schemas do not match: {diff}")
 
         # verify that persisted streams have the correct properties
         chicken_catalog = found_catalogs[0]

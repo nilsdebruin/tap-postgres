@@ -12,16 +12,20 @@ from psycopg2.extensions import quote_ident
 LOGGER = get_logger()
 
 def get_test_connection_config(target_db='postgres'):
-    missing_envs = [x for x in [os.getenv('TAP_POSTGRES_HOST'),
-                                os.getenv('TAP_POSTGRES_USER'),
-                                os.getenv('TAP_POSTGRES_PASSWORD'),
-                                os.getenv('TAP_POSTGRES_PORT')] if x == None]
-    if len(missing_envs) != 0:
+    if missing_envs := [
+        x
+        for x in [
+            os.getenv('TAP_POSTGRES_HOST'),
+            os.getenv('TAP_POSTGRES_USER'),
+            os.getenv('TAP_POSTGRES_PASSWORD'),
+            os.getenv('TAP_POSTGRES_PORT'),
+        ]
+        if x is None
+    ]:
         #pylint: disable=line-too-long
         raise Exception("set TAP_POSTGRES_HOST, TAP_POSTGRES_USER, TAP_POSTGRES_PASSWORD, TAP_POSTGRES_PORT")
 
-    conn_config = {}
-    conn_config['host'] = os.environ.get('TAP_POSTGRES_HOST')
+    conn_config = {'host': os.environ.get('TAP_POSTGRES_HOST')}
     conn_config['user'] = os.environ.get('TAP_POSTGRES_USER')
     conn_config['password'] = os.environ.get('TAP_POSTGRES_PASSWORD')
     conn_config['port'] = os.environ.get('TAP_POSTGRES_PORT')
@@ -30,12 +34,8 @@ def get_test_connection_config(target_db='postgres'):
 
 def get_test_connection(target_db='postgres'):
     conn_config = get_test_connection_config(target_db)
-    conn_string = "host='{}' dbname='{}' user='{}' password='{}' port='{}'".format(conn_config['host'],
-                                                                                   conn_config['dbname'],
-                                                                                   conn_config['user'],
-                                                                                   conn_config['password'],
-                                                                                   conn_config['port'])
-    LOGGER.info("connecting to {}".format(conn_config['host']))
+    conn_string = f"host='{conn_config['host']}' dbname='{conn_config['dbname']}' user='{conn_config['user']}' password='{conn_config['password']}' port='{conn_config['port']}'"
+    LOGGER.info(f"connecting to {conn_config['host']}")
 
     conn = psycopg2.connect(conn_string)
     conn.autocommit = True
@@ -43,36 +43,32 @@ def get_test_connection(target_db='postgres'):
     return conn
 
 def build_col_sql(col, cur):
-    if col.get('quoted'):
-        col_sql = "{} {}".format(quote_ident(col['name'], cur), col['type'])
-    else:
-        col_sql = "{} {}".format(col['name'], col['type'])
-
-    return col_sql
+    return (
+        f"{quote_ident(col['name'], cur)} {col['type']}"
+        if col.get('quoted')
+        else f"{col['name']} {col['type']}"
+    )
 
 def build_table(table, cur):
-    create_sql = "CREATE TABLE {}\n".format(quote_ident(table['name'], cur))
+    create_sql = f"CREATE TABLE {quote_ident(table['name'], cur)}\n"
     col_sql = map(lambda c: build_col_sql(c, cur), table['columns'])
-    pks = [c['name'] for c in table['columns'] if c.get('primary_key')]
-    if len(pks) != 0:
-        pk_sql = ",\n CONSTRAINT {}  PRIMARY KEY({})".format(quote_ident(table['name'] + "_pk", cur), " ,".join(pks))
+    if pks := [c['name'] for c in table['columns'] if c.get('primary_key')]:
+        pk_sql = f""",\n CONSTRAINT {quote_ident(table['name'] + "_pk", cur)}  PRIMARY KEY({" ,".join(pks)})"""
     else:
-       pk_sql = ""
+        pk_sql = ""
 
-    sql = "{} ( {} {})".format(create_sql, ",\n".join(col_sql), pk_sql)
-
-    return sql
+    return "{} ( {} {})".format(create_sql, ",\n".join(col_sql), pk_sql)
 
 def ensure_db(dbname='postgres'):
     # Create database dev if not exists
     with get_test_connection() as conn:
         conn.autocommit = True
         with conn.cursor() as cur:
-            cur.execute("SELECT 1 FROM pg_database WHERE datname = '{}'".format(dbname))
+            cur.execute(f"SELECT 1 FROM pg_database WHERE datname = '{dbname}'")
             exists = cur.fetchone()
             if not exists:
-                print("Creating database {}".format(dbname))
-                cur.execute("CREATE DATABASE {}".format(dbname))
+                print(f"Creating database {dbname}")
+                cur.execute(f"CREATE DATABASE {dbname}")
 
 @nottest
 def ensure_test_table(table_spec, target_db='postgres'):
@@ -88,7 +84,7 @@ def ensure_test_table(table_spec, target_db='postgres'):
             old_table = cur.fetchall()
 
             if len(old_table) != 0:
-                cur.execute('DROP TABLE {} cascade'.format(quote_ident(table_spec['name'], cur)))
+                cur.execute(f"DROP TABLE {quote_ident(table_spec['name'], cur)} cascade")
 
             sql = build_table(table_spec, cur)
             LOGGER.info("create table sql: %s", sql)
@@ -115,7 +111,10 @@ def select_all_of_stream(stream):
     old_md.update({'selected': True})
     for col_name, col_schema in stream['schema']['properties'].items():
         #explicitly select column if it is not automatic
-        if new_md.get(('properties', col_name)).get('inclusion') != 'automatic' and new_md.get(('properties', col_name)).get('inclusion') != 'unsupported':
+        if new_md.get(('properties', col_name)).get('inclusion') not in [
+            'automatic',
+            'unsupported',
+        ]:
             old_md = new_md.get(('properties', col_name))
             old_md.update({'selected' : True})
 
@@ -142,27 +141,26 @@ def crud_up_value(value):
     elif value is None:
         return 'NULL'
     elif isinstance(value, datetime.datetime) and value.tzinfo is None:
-        return "TIMESTAMP '{}'".format(str(value))
+        return f"TIMESTAMP '{str(value)}'"
     elif isinstance(value, datetime.datetime):
-        return "TIMESTAMP '{}'".format(str(value))
+        return f"TIMESTAMP '{str(value)}'"
     elif isinstance(value, datetime.date):
-        return "Date  '{}'".format(str(value))
+        return f"Date  '{str(value)}'"
     else:
-        raise Exception("crud_up_value does not yet support {}".format(value.__class__))
+        raise Exception(f"crud_up_value does not yet support {value.__class__}")
 
 def insert_record(cursor, table_name, data):
-    our_keys = list(data.keys())
-    our_keys.sort()
+    our_keys = sorted(data.keys())
     our_values = list(map( lambda k: data.get(k), our_keys))
 
 
     columns_sql = ", \n".join(map(lambda k: quote_ident(k, cursor), our_keys))
-    value_sql = ",".join(["%s" for i in range(len(our_keys))])
+    value_sql = ",".join(["%s" for _ in range(len(our_keys))])
 
     insert_sql = """ INSERT INTO {}
                             ( {} )
                      VALUES ( {} )""".format(quote_ident(table_name, cursor), columns_sql, value_sql)
-    LOGGER.info("INSERT: {}".format(insert_sql))
+    LOGGER.info(f"INSERT: {insert_sql}")
     cursor.execute(insert_sql, list(map(crud_up_value, our_values)))
 
 

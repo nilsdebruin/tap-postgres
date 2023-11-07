@@ -16,9 +16,12 @@ def get_ssl_status(conn_config):
             with conn.cursor(cursor_factory=psycopg2.extras.DictCursor, name='stitch_cursor') as cur:
                 select_sql = "SELECT datname,usename, ssl, client_addr FROM pg_stat_ssl JOIN pg_stat_activity ON pg_stat_ssl.pid = pg_stat_activity.pid"
                 cur.execute(select_sql)
-                for row in cur:
-                    if row[0] == conn_config['dbname'] and row[1] == conn_config['user']:
-                        matching_rows.append(row)
+                matching_rows.extend(
+                    row
+                    for row in cur
+                    if row[0] == conn_config['dbname']
+                    and row[1] == conn_config['user']
+                )
         if len(matching_rows) == 1:
             LOGGER.info('User %s connected with SSL = %s', conn_config['user'], matching_rows[0][2])
         else:
@@ -39,10 +42,10 @@ def canonicalize_identifier(identifier):
     return identifier.replace('"', '""')
 
 def fully_qualified_column_name(schema, table, column):
-    return '"{}"."{}"."{}"'.format(canonicalize_identifier(schema), canonicalize_identifier(table), canonicalize_identifier(column))
+    return f'"{canonicalize_identifier(schema)}"."{canonicalize_identifier(table)}"."{canonicalize_identifier(column)}"'
 
 def fully_qualified_table_name(schema, table):
-    return '"{}"."{}"'.format(canonicalize_identifier(schema), canonicalize_identifier(table))
+    return f'"{canonicalize_identifier(schema)}"."{canonicalize_identifier(table)}"'
 
 def open_connection(conn_config, logical_replication=False):
     cfg = {
@@ -60,16 +63,17 @@ def open_connection(conn_config, logical_replication=False):
     if logical_replication:
         cfg['connection_factory'] = psycopg2.extras.LogicalReplicationConnection
 
-    conn = psycopg2.connect(**cfg)
-
-    return conn
+    return psycopg2.connect(**cfg)
 
 def prepare_columns_sql(c):
-    column_name = """ "{}" """.format(canonicalize_identifier(c))
-    return column_name
+    return f""" "{canonicalize_identifier(c)}" """
 
 def filter_dbs_sql_clause(sql, filter_dbs):
-    in_clause = " AND datname in (" + ",".join(["'{}'".format(b.strip(' ')) for b in filter_dbs.split(',')]) + ")"
+    in_clause = (
+        " AND datname in ("
+        + ",".join([f"'{b.strip(' ')}'" for b in filter_dbs.split(',')])
+        + ")"
+    )
     return sql + in_clause
 
 #pylint: disable=too-many-branches,too-many-nested-blocks
@@ -83,9 +87,9 @@ def selected_value_to_singer_value_impl(elem, sql_datatype):
         if sql_datatype == 'timestamp with time zone':
             cleaned_elem = elem.isoformat()
         else: #timestamp WITH OUT time zone
-            cleaned_elem = elem.isoformat() + '+00:00'
+            cleaned_elem = f'{elem.isoformat()}+00:00'
     elif isinstance(elem, datetime.date):
-        cleaned_elem = elem.isoformat() + 'T00:00:00+00:00'
+        cleaned_elem = f'{elem.isoformat()}T00:00:00+00:00'
     elif sql_datatype == 'bit':
         cleaned_elem = elem == '1'
     elif sql_datatype == 'boolean':
@@ -98,10 +102,7 @@ def selected_value_to_singer_value_impl(elem, sql_datatype):
         cleaned_elem = elem
     elif isinstance(elem, decimal.Decimal):
         #NB> We cast NaN's to NULL as wal2json does not support them and now we are at least consistent(ly wrong)
-        if elem.is_nan():
-            cleaned_elem = None
-        else:
-            cleaned_elem = elem
+        cleaned_elem = None if elem.is_nan() else elem
     elif isinstance(elem, float):
         #NB> We cast NaN's, +Inf, -Inf to NULL as wal2json does not support them and now we are at least consistent(ly wrong)
         if math.isnan(elem):
@@ -114,9 +115,13 @@ def selected_value_to_singer_value_impl(elem, sql_datatype):
         if sql_datatype == 'hstore':
             cleaned_elem = elem
         else:
-            raise Exception("do not know how to marshall a dict if its not an hstore or json: {}".format(sql_datatype))
+            raise Exception(
+                f"do not know how to marshall a dict if its not an hstore or json: {sql_datatype}"
+            )
     else:
-        raise Exception("do not know how to marshall value of class( {} ) and sql_datatype ( {} )".format(elem.__class__, sql_datatype))
+        raise Exception(
+            f"do not know how to marshall value of class( {elem.__class__} ) and sql_datatype ( {sql_datatype} )"
+        )
 
     return cleaned_elem
 
@@ -154,13 +159,11 @@ def hstore_available(conn_info):
         with conn.cursor(cursor_factory=psycopg2.extras.DictCursor, name='stitch_cursor') as cur:
             cur.execute(""" SELECT installed_version FROM pg_available_extensions WHERE name = 'hstore' """)
             res = cur.fetchone()
-            if res and res[0]:
-                return True
-            return False
+            return bool(res and res[0])
 
 
 def compute_tap_stream_id(database_name, schema_name, table_name):
-    return database_name + '-' + schema_name + '-' + table_name
+    return f'{database_name}-{schema_name}-{table_name}'
 
 
 #NB> numeric/decimal columns in postgres without a specified scale && precision

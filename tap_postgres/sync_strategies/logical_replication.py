@@ -26,7 +26,7 @@ def get_pg_version(cur):
     res = cur.fetchone()[0]
     version_match = re.match('PostgreSQL (\d+)', res)
     if not version_match:
-        raise Exception('unable to determine PostgreSQL version from {}'.format(res))
+        raise Exception(f'unable to determine PostgreSQL version from {res}')
 
     version = int(version_match.group(1))
     LOGGER.info("Detected PostgresSQL version: %s", version)
@@ -41,7 +41,9 @@ def fetch_current_lsn(conn_config):
             elif version > 9:
                 cur.execute("SELECT pg_current_wal_lsn()")
             else:
-                raise Exception('unable to fetch current lsn for PostgresQL version {}'.format(version))
+                raise Exception(
+                    f'unable to fetch current lsn for PostgresQL version {version}'
+                )
 
             current_lsn = cur.fetchone()[0]
             file, index = current_lsn.split('/')
@@ -61,7 +63,7 @@ def get_stream_version(tap_stream_id, state):
     stream_version = singer.get_bookmark(state, tap_stream_id, 'version')
 
     if stream_version is None:
-        raise Exception("version not found for log miner {}".format(tap_stream_id))
+        raise Exception(f"version not found for log miner {tap_stream_id}")
 
     return stream_version
 
@@ -78,8 +80,7 @@ def create_hstore_elem(conn_info, elem):
             query = create_hstore_elem_query(elem)
             cur.execute(query)
             res = cur.fetchone()[0]
-            hstore_elem = reduce(tuples_to_map, [res[i:i + 2] for i in range(0, len(res), 2)], {})
-            return hstore_elem
+            return reduce(tuples_to_map, [res[i:i + 2] for i in range(0, len(res), 2)], {})
 
 def create_array_elem(elem, sql_datatype, conn_info):
     if elem is None:
@@ -136,10 +137,9 @@ def create_array_elem(elem, sql_datatype, conn_info):
                 #custom datatypes like enums
                 cast_datatype = 'text[]'
 
-            sql_stmt = """SELECT $stitch_quote${}$stitch_quote$::{}""".format(elem, cast_datatype)
+            sql_stmt = f"""SELECT $stitch_quote${elem}$stitch_quote$::{cast_datatype}"""
             cur.execute(sql_stmt)
-            res = cur.fetchone()[0]
-            return res
+            return cur.fetchone()[0]
 
 #pylint: disable=too-many-branches,too-many-nested-blocks
 def selected_value_to_singer_value_impl(elem, og_sql_datatype, conn_info):
@@ -148,23 +148,23 @@ def selected_value_to_singer_value_impl(elem, og_sql_datatype, conn_info):
     if elem is None:
         return elem
     if sql_datatype == 'timestamp without time zone':
-        return parse(elem).isoformat() + '+00:00'
+        return f'{parse(elem).isoformat()}+00:00'
     if sql_datatype == 'timestamp with time zone':
         if isinstance(elem, datetime.datetime):
             return elem.isoformat()
 
         return parse(elem).isoformat()
     if sql_datatype == 'date':
-        if  isinstance(elem, datetime.date):
+        if isinstance(elem, datetime.date):
             #logical replication gives us dates as strings UNLESS they from an array
-            return elem.isoformat() + 'T00:00:00+00:00'
-        return parse(elem).isoformat() + "+00:00"
+            return f'{elem.isoformat()}T00:00:00+00:00'
+        return f"{parse(elem).isoformat()}+00:00"
     if sql_datatype == 'time with time zone':
         return parse(elem).isoformat().split('T')[1]
     if sql_datatype == 'bit':
         #for arrays, elem will == True
         #for ordinary bits, elem will == '1'
-        return elem == '1' or elem == True
+        return elem in ['1', True]
     if sql_datatype == 'boolean':
         return elem
     if sql_datatype == 'hstore':
@@ -178,7 +178,7 @@ def selected_value_to_singer_value_impl(elem, og_sql_datatype, conn_info):
     if isinstance(elem, str):
         return elem
 
-    raise Exception("do not know how to marshall value of type {}".format(elem.__class__))
+    raise Exception(f"do not know how to marshall value of type {elem.__class__}")
 
 def selected_array_to_singer_value(elem, sql_datatype, conn_info):
     if isinstance(elem, list):
@@ -204,7 +204,7 @@ def row_to_singer_message(stream, row, version, columns, time_extracted, md_map,
 
         if not sql_datatype:
             LOGGER.info("No sql-datatype found for stream %s: %s", stream, columns[idx])
-            raise Exception("Unable to find sql-datatype for stream {}".format(stream))
+            raise Exception(f"Unable to find sql-datatype for stream {stream}")
 
         cleaned_elem = selected_value_to_singer_value(elem, sql_datatype, conn_info)
         row_to_persist += (cleaned_elem,)
@@ -249,12 +249,12 @@ def consume_message_format_2(payload, conn_info, streams_lookup, state, time_ext
                         col_names.append(column['name'])
                         col_vals.append(column['value'])
 
-                col_names = col_names + ['_sdc_deleted_at']
-                col_vals = col_vals + [None]
+                col_names += ['_sdc_deleted_at']
+                col_vals += [None]
 
                 if conn_info.get('debug_lsn'):
-                    col_names = col_names + ['_sdc_lsn']
-                    col_vals = col_vals + [str(lsn)]
+                    col_names += ['_sdc_lsn']
+                    col_vals += [str(lsn)]
 
             elif payload['action'] == 'D':
                 for column in payload['identity']:
@@ -262,12 +262,16 @@ def consume_message_format_2(payload, conn_info, streams_lookup, state, time_ext
                         col_names.append(column['name'])
                         col_vals.append(column['value'])
 
-                col_names = col_names + ['_sdc_deleted_at']
-                col_vals = col_vals + [singer.utils.strftime(singer.utils.strptime_to_utc(payload['timestamp']))]
+                col_names += ['_sdc_deleted_at']
+                col_vals += [
+                    singer.utils.strftime(
+                        singer.utils.strptime_to_utc(payload['timestamp'])
+                    )
+                ]
 
                 if conn_info.get('debug_lsn'):
-                    col_vals = col_vals + [str(lsn)]
-                    col_names = col_names + ['_sdc_lsn']
+                    col_vals += [str(lsn)]
+                    col_names += ['_sdc_lsn']
 
             # Yield 1 record to match the API of V1
             yield row_to_singer_message(target_stream, col_vals, stream_version, col_names, time_extracted, stream_md_map, conn_info)
@@ -299,11 +303,11 @@ def consume_message_format_1(payload, conn_info, streams_lookup, state, time_ext
                     col_names.append(col)
                     col_vals.append(c['columnvalues'][idx])
 
-            col_names = col_names + ['_sdc_deleted_at']
-            col_vals = col_vals + [None]
+            col_names += ['_sdc_deleted_at']
+            col_vals += [None]
             if conn_info.get('debug_lsn'):
-                col_names = col_names + ['_sdc_lsn']
-                col_vals = col_vals + [str(lsn)]
+                col_names += ['_sdc_lsn']
+                col_vals += [str(lsn)]
             record_message = row_to_singer_message(target_stream, col_vals, stream_version, col_names, time_extracted, stream_md_map, conn_info)
 
         elif c['kind'] == 'update':
@@ -314,12 +318,12 @@ def consume_message_format_1(payload, conn_info, streams_lookup, state, time_ext
                     col_names.append(col)
                     col_vals.append(c['columnvalues'][idx])
 
-            col_names = col_names + ['_sdc_deleted_at']
-            col_vals = col_vals + [None]
+            col_names += ['_sdc_deleted_at']
+            col_vals += [None]
 
             if conn_info.get('debug_lsn'):
-                col_vals = col_vals + [str(lsn)]
-                col_names = col_names + ['_sdc_lsn']
+                col_vals += [str(lsn)]
+                col_names += ['_sdc_lsn']
             record_message = row_to_singer_message(target_stream, col_vals, stream_version, col_names, time_extracted, stream_md_map, conn_info)
 
         elif c['kind'] == 'delete':
@@ -331,15 +335,15 @@ def consume_message_format_1(payload, conn_info, streams_lookup, state, time_ext
                     col_vals.append(c['oldkeys']['keyvalues'][idx])
 
 
-            col_names = col_names + ['_sdc_deleted_at']
-            col_vals = col_vals  + [singer.utils.strftime(time_extracted)]
+            col_names += ['_sdc_deleted_at']
+            col_vals += [singer.utils.strftime(time_extracted)]
             if conn_info.get('debug_lsn'):
-                col_vals = col_vals + [str(lsn)]
-                col_names = col_names + ['_sdc_lsn']
+                col_vals += [str(lsn)]
+                col_names += ['_sdc_lsn']
             record_message = row_to_singer_message(target_stream, col_vals, stream_version, col_names, time_extracted, stream_md_map, conn_info)
 
         else:
-            raise Exception("unrecognized replication operation: {}".format(c['kind']))
+            raise Exception(f"unrecognized replication operation: {c['kind']}")
 
 
         yield record_message
@@ -360,7 +364,7 @@ def consume_message(streams, state, msg, time_extracted, conn_info, end_lsn, mes
     elif message_format == "2":
         records = consume_message_format_2(payload, conn_info, streams_lookup, state, time_extracted, lsn)
     else:
-        raise Exception("Unknown wal2json message format version: {}".format(message_format))
+        raise Exception(f"Unknown wal2json message format version: {message_format}")
 
     for record_message in records:
         if record_message:
@@ -371,7 +375,9 @@ def consume_message(streams, state, msg, time_extracted, conn_info, end_lsn, mes
 
     LOGGER.debug("sending feedback to server. flush_lsn = %s", msg.data_start)
     if msg.data_start > end_lsn:
-        raise Exception("incorrectly attempting to flush an lsn({}) > end_lsn({})".format(msg.data_start, end_lsn))
+        raise Exception(
+            f"incorrectly attempting to flush an lsn({msg.data_start}) > end_lsn({end_lsn})"
+        )
 
     msg.cursor.send_feedback(flush_lsn=msg.data_start)
 
@@ -381,7 +387,7 @@ def consume_message(streams, state, msg, time_extracted, conn_info, end_lsn, mes
 def locate_replication_slot(conn_info):
     with post_db.open_connection(conn_info, False) as conn:
         with conn.cursor() as cur:
-            db_specific_slot = "stitch_{}".format(conn_info['dbname'])
+            db_specific_slot = f"stitch_{conn_info['dbname']}"
             cur.execute("SELECT * FROM pg_replication_slots WHERE slot_name = %s AND plugin = %s", (db_specific_slot, 'wal2json'))
             if len(cur.fetchall()) == 1:
                 LOGGER.info("using pg_replication_slot %s", db_specific_slot)
@@ -393,11 +399,15 @@ def locate_replication_slot(conn_info):
                 LOGGER.info("using pg_replication_slot 'stitch'")
                 return 'stitch'
 
-            raise Exception("Unable to find replication slot (stitch || {} with wal2json".format(db_specific_slot))
+            raise Exception(
+                f"Unable to find replication slot (stitch || {db_specific_slot} with wal2json"
+            )
 
 
 def sync_tables(conn_info, logical_streams, state, end_lsn):
-    start_lsn = min([get_bookmark(state, s['tap_stream_id'], 'lsn') for s in logical_streams])
+    start_lsn = min(
+        get_bookmark(state, s['tap_stream_id'], 'lsn') for s in logical_streams
+    )
     time_extracted = utils.now()
     slot = locate_replication_slot(conn_info)
     last_lsn_processed = None
@@ -423,7 +433,9 @@ def sync_tables(conn_info, logical_streams, state, end_lsn):
             try:
                 cur.start_replication(**replication_params)
             except psycopg2.ProgrammingError:
-                raise Exception("unable to start replication with logical replication slot {}".format(slot))
+                raise Exception(
+                    f"unable to start replication with logical replication slot {slot}"
+                )
 
             rows_saved = 0
             while True:
@@ -432,8 +444,7 @@ def sync_tables(conn_info, logical_streams, state, end_lsn):
                     LOGGER.info("breaking after %s seconds of polling with no data", poll_duration)
                     break
 
-                msg = cur.read_message()
-                if msg:
+                if msg := cur.read_message():
                     begin_ts = datetime.datetime.now()
                     if msg.data_start > end_lsn:
                         LOGGER.info("gone past end_lsn %s for run. breaking", end_lsn)

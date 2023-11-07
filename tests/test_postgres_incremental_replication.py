@@ -342,15 +342,11 @@ CREATE TABLE {} (id            SERIAL PRIMARY KEY,
     @staticmethod
     def expected_ts_tz(our_ts_tz):
         our_ts_tz_utc = our_ts_tz.astimezone(pytz.utc)
-        expected_value = datetime.datetime.strftime(our_ts_tz_utc, "%Y-%m-%dT%H:%M:%S.%f+00:00")
-
-        return expected_value
+        return datetime.datetime.strftime(our_ts_tz_utc, "%Y-%m-%dT%H:%M:%S.%f+00:00")
 
     @staticmethod
     def expected_ts(our_ts):
-        expected_value = datetime.datetime.strftime(our_ts, "%Y-%m-%dT%H:%M:%S.%f+00:00")
-
-        return expected_value
+        return datetime.datetime.strftime(our_ts, "%Y-%m-%dT%H:%M:%S.%f+00:00")
 
 
     def test_run(self):
@@ -378,7 +374,7 @@ CREATE TABLE {} (id            SERIAL PRIMARY KEY,
         print("discovered streams are correct")
 
         # perform table selection
-        print('selecting {} and all fields within the table'.format(test_table_name))
+        print(f'selecting {test_table_name} and all fields within the table')
         schema_and_metadata = menagerie.get_annotated_schema(conn_id, test_catalog['stream_id'])
         additional_md = [{ "breadcrumb" : [], "metadata" : {'replication-method' : 'INCREMENTAL', 'replication-key' : 'OUR TS TZ'}}]
         _ = connections.select_catalog_and_fields_via_metadata(conn_id, test_catalog, schema_and_metadata, additional_md)
@@ -459,11 +455,10 @@ CREATE TABLE {} (id            SERIAL PRIMARY KEY,
                 # inserting...
                 # a record with a replication-key value that is lower than the previous bookmark
                 nyc_tz = pytz.timezone('America/New_York')
-                our_time_offset = "-04:00"
                 our_ts = datetime.datetime(1996, 4, 4, 4, 4, 4, 733184)
                 our_ts_tz = nyc_tz.localize(our_ts)
                 our_time  = datetime.time(6,6,6)
-                our_time_tz = our_time.isoformat() + our_time_offset
+                our_time_tz = f"{our_time.isoformat()}-04:00"
                 our_date = datetime.date(1970, 7, 1)
                 my_uuid =  str(uuid.uuid1())
                 self.inserted_records.append({
@@ -526,7 +521,7 @@ CREATE TABLE {} (id            SERIAL PRIMARY KEY,
                 nyc_tz = pytz.timezone('America/New_York')
                 our_ts_tz = nyc_tz.localize(our_ts)
                 our_time  = datetime.time(12,11,10)
-                our_time_tz = our_time.isoformat() + "-04:00"
+                our_time_tz = f"{our_time.isoformat()}-04:00"
                 our_date = datetime.date(1999, 9, 9)
                 my_uuid =  str(uuid.uuid1())
                 self.inserted_records.append({
@@ -589,7 +584,7 @@ CREATE TABLE {} (id            SERIAL PRIMARY KEY,
                 nyc_tz = pytz.timezone('America/New_York')
                 our_ts_tz = nyc_tz.localize(our_ts)
                 our_time  = datetime.time(12,11,10)
-                our_time_tz = our_time.isoformat() + "-04:00"
+                our_time_tz = f"{our_time.isoformat()}-04:00"
                 our_date = datetime.date(1999, 9, 9)
                 my_uuid =  str(uuid.uuid1())
                 self.inserted_records.append({

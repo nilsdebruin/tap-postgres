@@ -32,15 +32,14 @@ expected_schemas = {'chicken_view':
 
 
 def canonicalized_table_name(schema, table, cur):
-    return "{}.{}".format(quote_ident(schema, cur), quote_ident(table, cur))
+    return f"{quote_ident(schema, cur)}.{quote_ident(table, cur)}"
 
 def insert_record(cursor, table_name, data):
-    our_keys = list(data.keys())
-    our_keys.sort()
+    our_keys = sorted(data.keys())
     our_values = [data.get(key) for key in our_keys]
 
     columns_sql = ", \n ".join(our_keys)
-    value_sql = ",".join(["%s" for i in range(len(our_keys))])
+    value_sql = ",".join(["%s" for _ in range(len(our_keys))])
 
     insert_sql = """ INSERT INTO {}
                             ( {} )
@@ -72,12 +71,13 @@ class PostgresViewsFullTable(unittest.TestCase):
                                                    WHERE table_schema = %s
                                                      AND  table_name =  %s)""",
                                             [test_schema_name, table])
-                    old_table = cur.fetchone()[0]
-                    if old_table:
-                        cur.execute("DROP TABLE {} CASCADE".format(canonicalized_table_name(test_schema_name, table, cur)))
+                    if old_table := cur.fetchone()[0]:
+                        cur.execute(
+                            f"DROP TABLE {canonicalized_table_name(test_schema_name, table, cur)} CASCADE"
+                        )
 
 
-                cur.execute("""DROP VIEW IF EXISTS {} """.format(quote_ident(test_view, cur)))
+                cur.execute(f"""DROP VIEW IF EXISTS {quote_ident(test_view, cur)} """)
                 cur.execute("""CREATE TABLE {}
                                 (id SERIAL PRIMARY KEY,
                                  name VARCHAR,
@@ -101,7 +101,9 @@ class PostgresViewsFullTable(unittest.TestCase):
                 self.rec_1 = { 'name' : 'fred', 'size' : 'big' }
                 insert_record(cur, test_table_name_1, self.rec_1)
 
-                cur.execute("SELECT id FROM {}".format(canonicalized_table_name(test_schema_name, test_table_name_1, cur)))
+                cur.execute(
+                    f"SELECT id FROM {canonicalized_table_name(test_schema_name, test_table_name_1, cur)}"
+                )
                 fk_id = cur.fetchone()[0]
 
                 self.rec_2 = { 'fk_id' : fk_id, 'age' : 99 }
@@ -161,13 +163,15 @@ class PostgresViewsFullTable(unittest.TestCase):
                           in menagerie.get_catalogs(conn_id)
                           if fc['tap_stream_id'] in self.expected_check_streams()]
 
-        self.assertEqual(len(found_catalogs),
-                         1,
-                         msg="unable to locate schemas for connection {}".format(conn_id))
+        self.assertEqual(
+            len(found_catalogs),
+            1,
+            msg=f"unable to locate schemas for connection {conn_id}",
+        )
 
         found_catalog_names = set(map(lambda c: c['tap_stream_id'], found_catalogs))
         diff = self.expected_check_streams().symmetric_difference(found_catalog_names)
-        self.assertEqual(len(diff), 0, msg="discovered schemas do not match: {}".format(diff))
+        self.assertEqual(len(diff), 0, msg=f"discovered schemas do not match: {diff}")
 
         # verify that persisted streams have the correct properties
         chicken_catalog = found_catalogs[0]
@@ -221,16 +225,20 @@ class PostgresViewsFullTable(unittest.TestCase):
         # verifications about individual records
         for stream, recs in records_by_stream.items():
             # verify the persisted schema was correct
-            self.assertEqual(recs['schema'],
-                             expected_schemas[stream],
-                             msg="Persisted schema did not match expected schema for stream `{}`.".format(stream))
+            self.assertEqual(
+                recs['schema'],
+                expected_schemas[stream],
+                msg=f"Persisted schema did not match expected schema for stream `{stream}`.",
+            )
 
         actual_chicken_record = records_by_stream['chicken_view']['messages'][1]['data']
 
         expected_chicken_record = {'id': 1, 'fk_id': 1, 'name': 'fred', 'age': 99, 'size' : 'big'}
-        self.assertEqual(actual_chicken_record,
-                         expected_chicken_record,
-                         msg="Expected `various_types` upsert record data to be {}, but target output {}".format(expected_chicken_record, actual_chicken_record))
+        self.assertEqual(
+            actual_chicken_record,
+            expected_chicken_record,
+            msg=f"Expected `various_types` upsert record data to be {expected_chicken_record}, but target output {actual_chicken_record}",
+        )
 
         print("records are correct")
 
